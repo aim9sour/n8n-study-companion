@@ -294,9 +294,9 @@ def show_mode_status(mode: str, data: Dict[str, Any], db_path: Path):
     if completed_ids:
         last_id = completed_ids[-1]
         if mode == "templates":
-            last_name, _, _, _, _, _ = get_template_info(last_id, db_path)
+            last_name, *_ = get_template_info(last_id, db_path)
         else:
-            last_name, _, _, _, _, _, _ = get_node_info(last_id, db_path)
+            last_name, *_ = get_node_info(last_id, db_path)
         print(color_text(f"Last Completed: {last_id} - {last_name}", COLOR_YELLOW))
     print()
 
