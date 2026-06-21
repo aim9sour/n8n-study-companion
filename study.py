@@ -51,32 +51,42 @@ def find_db_path() -> Optional[Path]:
         return fallback
     return None
 
-def get_template_info(template_id: int, db_path: Path) -> Tuple[str, str, int, str, str, str]:
+def get_template_info(template_id: int, db_path: Path) -> Tuple[str, str, int, str, str, int, str, str]:
     conn = None
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
         c = conn.cursor()
         c.execute("""
-            SELECT name, description, views, categories, author_name, url 
+            SELECT name, description, views, categories, author_name, author_verified, nodes_used, url 
             FROM templates WHERE id = ?
         """, (template_id,))
         row = c.fetchone()
         if row:
-            return row[0] or "Unknown", row[1] or "", row[2] or 0, row[3] or "General", row[4] or "n8n", row[5] or ""
+            return (
+                row[0] or "Unknown", 
+                row[1] or "", 
+                row[2] or 0, 
+                row[3] or "General", 
+                row[4] or "n8n", 
+                row[5] or 0, 
+                row[6] or "[]", 
+                row[7] or ""
+            )
     except sqlite3.Error:
         pass
     finally:
         if conn:
             conn.close()
-    return "Unknown Template", "", 0, "General", "n8n", ""
+    return "Unknown Template", "", 0, "General", "n8n", 0, "[]", ""
 
-def get_node_info(node_type: str, db_path: Path) -> Tuple[str, str, str, str, int, str, str]:
+def get_node_info(node_type: str, db_path: Path) -> Tuple[str, str, str, str, int, str, int, int, int, int, str]:
     conn = None
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
         c = conn.cursor()
         c.execute("""
-            SELECT display_name, description, category, npm_package_name, npm_downloads, npm_version, documentation 
+            SELECT display_name, description, category, npm_package_name, npm_downloads, npm_version, 
+                   is_verified, is_ai_tool, is_trigger, is_webhook, documentation 
             FROM nodes WHERE node_type = ?
         """, (node_type,))
         row = c.fetchone()
@@ -88,14 +98,18 @@ def get_node_info(node_type: str, db_path: Path) -> Tuple[str, str, str, str, in
                 row[3] or "", 
                 row[4] or 0, 
                 row[5] or "latest", 
-                row[6] or ""
+                row[6] or 0,
+                row[7] or 0,
+                row[8] or 0,
+                row[9] or 0,
+                row[10] or ""
             )
     except sqlite3.Error:
         pass
     finally:
         if conn:
             conn.close()
-    return "Unknown Node", "", "General", "", 0, "latest", ""
+    return "Unknown Node", "", "General", "", 0, "latest", 0, 0, 0, 0, ""
 
 def load_data() -> Tuple[Dict[str, Any], Path]:
     data = {}
@@ -195,31 +209,56 @@ def save_data(data: Dict[str, Any]) -> None:
         raise e
 
 def print_template(template_id: int, db_path: Path) -> None:
-    name, desc, views, categories, author, url = get_template_info(template_id, db_path)
+    name, desc, views, categories, author, author_verified, nodes_used_json, url = get_template_info(template_id, db_path)
+    
+    # Format nodes used
+    try:
+        nodes_list = json.loads(nodes_used_json)
+        cleaned_nodes = []
+        for n in nodes_list:
+            if n.startswith("n8n-nodes-base."):
+                cleaned_nodes.append(n[len("n8n-nodes-base."):])
+            elif n.startswith("@n8n/n8n-nodes-langchain."):
+                cleaned_nodes.append(n[len("@n8n/n8n-nodes-langchain."):])
+            else:
+                cleaned_nodes.append(n)
+        unique_nodes = sorted(list(set(cleaned_nodes)))
+        nodes_used_str = ", ".join(unique_nodes) if unique_nodes else "None"
+    except:
+        nodes_used_str = "None"
+        
+    verified_status = "Yes" if author_verified else "No"
+    
     print(color_text(f"📖 Active Template: {template_id} - {name}", COLOR_CYAN))
-    print(f"📊 Views: {views} | 🏷️ Categories: {categories} | 👤 Author: {author}")
+    print(f"📊 Views: {views} | 🏷️ Categories: {categories} | 👤 Author: {author} (Verified: {verified_status})")
+    print(f"🛠️ Nodes Used: {nodes_used_str}")
     print(f"🔗 URL: {url or f'https://n8n.io/workflows/{template_id}'}")
     if desc:
-        # Truncate description to 500 characters
-        if len(desc) > 500:
-            desc = desc[:497] + "..."
         print(f"\n{color_text('Description:', COLOR_YELLOW)}\n{desc}\n")
 
 def print_node(node_type: str, db_path: Path) -> None:
-    display_name, desc, category, npm_package, npm_downloads, npm_version, doc = get_node_info(node_type, db_path)
+    display_name, desc, category, npm_package, npm_downloads, npm_version, is_verified, is_ai_tool, is_trigger, is_webhook, doc = get_node_info(node_type, db_path)
+    
+    verified_status = "Yes" if is_verified else "No"
+    
+    # Build attributes list
+    attrs = []
+    if is_trigger:
+        attrs.append("Trigger")
+    if is_webhook:
+        attrs.append("Webhook")
+    if is_ai_tool:
+        attrs.append("AI Tool")
+    attr_str = ", ".join(attrs) if attrs else "Standard"
+    
     print(color_text(f"🛠️ Active Node: {display_name}", COLOR_CYAN))
-    print(f"🆔 Type: {node_type} | 🏷️ Category: {category}")
+    print(f"🆔 Type: {node_type} | 🏷️ Category: {category} | 🛡️ Verified: {verified_status}")
+    print(f"⚙️ Attributes: {attr_str}")
     if npm_package:
         print(f"📦 NPM Package: {npm_package} ({npm_version}) | 📥 Downloads: {npm_downloads}")
     if desc:
-        # Truncate description to 500 characters
-        if len(desc) > 500:
-            desc = desc[:497] + "..."
         print(f"📝 Description: {desc}")
     if doc:
-        # Truncate documentation to 500 characters
-        if len(doc) > 500:
-            doc = doc[:497] + "..."
         print(f"\n{color_text('Documentation:', COLOR_YELLOW)}\n{doc}\n")
 
 def print_progress_bar(done: int, total: int, width: int = 30) -> str:
