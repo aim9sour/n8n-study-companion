@@ -3,7 +3,6 @@ import sys
 import json
 import sqlite3
 import tempfile
-import argparse
 from pathlib import Path
 from typing import Dict, Any, Tuple, List, Optional
 
@@ -32,7 +31,6 @@ def color_text(text: str, color: str) -> str:
     return text
 
 def find_db_path() -> Optional[Path]:
-    # 1. Direct check in AppData/Local/npm-cache/_npx (where n8n-mcp runs from)
     appdata_local = os.environ.get("LOCALAPPDATA")
     if not appdata_local:
         appdata_local = str(Path.home() / "AppData" / "Local")
@@ -40,7 +38,6 @@ def find_db_path() -> Optional[Path]:
     npx_dir = Path(appdata_local) / "npm-cache" / "_npx"
     if npx_dir.exists():
         try:
-            # List only hash folders under _npx directly
             for path in npx_dir.iterdir():
                 if path.is_dir():
                     candidate_path = path / "node_modules" / "n8n-mcp" / "data" / "nodes.db"
@@ -49,27 +46,56 @@ def find_db_path() -> Optional[Path]:
         except OSError:
             pass
                     
-    # 2. Fallback to scratch directory database (dynamically resolve user home)
     fallback = Path.home() / ".gemini" / "antigravity" / "scratch" / "n8n-mcp" / "data" / "nodes.db"
     if fallback.exists():
         return fallback
     return None
 
-def get_template_info(template_id: str, db_path: Path) -> Tuple[str, str]:
+def get_template_info(template_id: int, db_path: Path) -> Tuple[str, str, int, str, str, str]:
     conn = None
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
         c = conn.cursor()
-        c.execute("SELECT name, description FROM templates WHERE id = ?", (template_id,))
+        c.execute("""
+            SELECT name, description, views, categories, author_name, url 
+            FROM templates WHERE id = ?
+        """, (template_id,))
         row = c.fetchone()
         if row:
-            return row[0], row[1] or ""
+            return row[0] or "Unknown", row[1] or "", row[2] or 0, row[3] or "General", row[4] or "n8n", row[5] or ""
     except sqlite3.Error:
         pass
     finally:
         if conn:
             conn.close()
-    return "Unknown Template", ""
+    return "Unknown Template", "", 0, "General", "n8n", ""
+
+def get_node_info(node_type: str, db_path: Path) -> Tuple[str, str, str, str, int, str, str]:
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+        c = conn.cursor()
+        c.execute("""
+            SELECT display_name, description, category, npm_package_name, npm_downloads, npm_version, documentation 
+            FROM nodes WHERE node_type = ?
+        """, (node_type,))
+        row = c.fetchone()
+        if row:
+            return (
+                row[0] or "Unknown", 
+                row[1] or "", 
+                row[2] or "General", 
+                row[3] or "", 
+                row[4] or 0, 
+                row[5] or "latest", 
+                row[6] or ""
+            )
+    except sqlite3.Error:
+        pass
+    finally:
+        if conn:
+            conn.close()
+    return "Unknown Node", "", "General", "", 0, "latest", ""
 
 def load_data() -> Tuple[Dict[str, Any], Path]:
     data = {}
@@ -78,7 +104,6 @@ def load_data() -> Tuple[Dict[str, Any], Path]:
             with open(PROGRESS_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except json.JSONDecodeError:
-            # Corrupted file handling: backup the file and notify
             backup_path = PROGRESS_PATH.with_suffix(".corrupt.bak")
             try:
                 PROGRESS_PATH.rename(backup_path)
@@ -99,46 +124,62 @@ def load_data() -> Tuple[Dict[str, Any], Path]:
             sys.exit(1)
         data["db_path_cache"] = str(db_path)
 
-    # Fetch DB modification time
     try:
         current_mtime = db_path.stat().st_mtime
     except OSError:
         current_mtime = 0.0
 
-    cached_ids = data.get("ids", [])
-    cached_mtime = data.get("db_mtime", 0.0)
+    # Ensure separate modes in data
+    for mode in ("templates", "nodes"):
+        if mode not in data or not isinstance(data[mode], dict):
+            data[mode] = {
+                "ids": [],
+                "completed_ids": [],
+                "current_id": None,
+                "db_mtime": 0.0
+            }
 
-    # Reload IDs if database has changed
-    if not cached_ids or cached_mtime != current_mtime:
+    # Sync templates
+    t_data = data["templates"]
+    if not t_data.get("ids") or t_data.get("db_mtime", 0.0) != current_mtime:
         conn = None
         try:
             conn = sqlite3.connect(db_path, timeout=10.0)
             c = conn.cursor()
             c.execute("SELECT id FROM templates ORDER BY id ASC")
-            db_ids = [row[0] for row in c.fetchall()]
-            
-            data["ids"] = db_ids
-            data["db_mtime"] = current_mtime
-            data.setdefault("completed_ids", [])
-            data.setdefault("current_id", None)
+            t_data["ids"] = [row[0] for row in c.fetchall()]
+            t_data["db_mtime"] = current_mtime
             save_data(data)
         except sqlite3.Error as e:
-            if cached_ids:
-                pass
-            else:
-                print(color_text(f"Error reading database: {e}", COLOR_RED))
+            if not t_data.get("ids"):
+                print(color_text(f"Error reading templates database: {e}", COLOR_RED))
                 sys.exit(1)
         finally:
             if conn:
                 conn.close()
-    else:
-        data.setdefault("completed_ids", [])
-        data.setdefault("current_id", None)
+
+    # Sync nodes
+    n_data = data["nodes"]
+    if not n_data.get("ids") or n_data.get("db_mtime", 0.0) != current_mtime:
+        conn = None
+        try:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            c = conn.cursor()
+            c.execute("SELECT node_type FROM nodes ORDER BY node_type ASC")
+            n_data["ids"] = [row[0] for row in c.fetchall()]
+            n_data["db_mtime"] = current_mtime
+            save_data(data)
+        except sqlite3.Error as e:
+            if not n_data.get("ids"):
+                print(color_text(f"Error reading nodes database: {e}", COLOR_RED))
+                sys.exit(1)
+        finally:
+            if conn:
+                conn.close()
 
     return data, db_path
 
 def save_data(data: Dict[str, Any]) -> None:
-    """Writes progress atomically to prevent state corruption."""
     temp_fd, temp_path_str = tempfile.mkstemp(dir=str(PROGRESS_PATH.parent), suffix=".tmp")
     temp_path = Path(temp_path_str)
     try:
@@ -153,14 +194,35 @@ def save_data(data: Dict[str, Any]) -> None:
                 pass
         raise e
 
-def print_template(template_id: str, db_path: Path) -> None:
-    name, desc = get_template_info(template_id, db_path)
+def print_template(template_id: int, db_path: Path) -> None:
+    name, desc, views, categories, author, url = get_template_info(template_id, db_path)
     print(color_text(f"📖 Active Template: {template_id} - {name}", COLOR_CYAN))
+    print(f"📊 Views: {views} | 🏷️ Categories: {categories} | 👤 Author: {author}")
+    print(f"🔗 URL: {url or f'https://n8n.io/workflows/{template_id}'}")
     if desc:
+        # Truncate description to 500 characters
+        if len(desc) > 500:
+            desc = desc[:497] + "..."
         print(f"\n{color_text('Description:', COLOR_YELLOW)}\n{desc}\n")
 
+def print_node(node_type: str, db_path: Path) -> None:
+    display_name, desc, category, npm_package, npm_downloads, npm_version, doc = get_node_info(node_type, db_path)
+    print(color_text(f"🛠️ Active Node: {display_name}", COLOR_CYAN))
+    print(f"🆔 Type: {node_type} | 🏷️ Category: {category}")
+    if npm_package:
+        print(f"📦 NPM Package: {npm_package} ({npm_version}) | 📥 Downloads: {npm_downloads}")
+    if desc:
+        # Truncate description to 500 characters
+        if len(desc) > 500:
+            desc = desc[:497] + "..."
+        print(f"📝 Description: {desc}")
+    if doc:
+        # Truncate documentation to 500 characters
+        if len(doc) > 500:
+            doc = doc[:497] + "..."
+        print(f"\n{color_text('Documentation:', COLOR_YELLOW)}\n{doc}\n")
+
 def print_progress_bar(done: int, total: int, width: int = 30) -> str:
-    """Generates a clean text-based progress bar."""
     if total == 0:
         return "[]"
     percent = done / total
@@ -168,36 +230,127 @@ def print_progress_bar(done: int, total: int, width: int = 30) -> str:
     bar = "█" * filled_len + "░" * (width - filled_len)
     return f"[{bar}] {done}/{total} ({percent * 100:.2f}%)"
 
-def main() -> None:
-    data, db_path = load_data()
-    ids = data["ids"]
-    completed_ids = data["completed_ids"]
-    current_id = data["current_id"]
+def show_mode_status(mode: str, data: Dict[str, Any], db_path: Path):
+    m_data = data[mode]
+    ids = m_data["ids"]
+    completed_ids = m_data["completed_ids"]
+    current_id = m_data["current_id"]
+    total = len(ids)
+    done_count = len(completed_ids)
+    
+    title = "📖 Templates Progress" if mode == "templates" else "🛠️ Nodes Progress"
+    print("\n" + color_text(title, COLOR_BLUE))
+    print("=" * 40)
+    print(color_text(print_progress_bar(done_count, total), COLOR_GREEN))
+    print("=" * 40)
+    
+    if current_id is not None:
+        if mode == "templates":
+            print_template(current_id, db_path)
+        else:
+            print_node(current_id, db_path)
+    else:
+        print(color_text("Active Item: None", COLOR_YELLOW))
+        
+    if completed_ids:
+        last_id = completed_ids[-1]
+        if mode == "templates":
+            last_name, _, _, _, _, _ = get_template_info(last_id, db_path)
+        else:
+            last_name, _, _, _, _, _, _ = get_node_info(last_id, db_path)
+        print(color_text(f"Last Completed: {last_id} - {last_name}", COLOR_YELLOW))
+    print()
 
-    # Support bilingual aliases (Arabic & English)
+def print_help():
+    print(color_text("n8n Study Progress Tracker", COLOR_BLUE))
+    print("=" * 60)
+    print("Usage:")
+    print(f"  {color_text('study template [done/undo/status]', COLOR_CYAN)}")
+    print("    Study official workflow templates")
+    print(f"  {color_text('study node [done/undo/status]', COLOR_CYAN)}")
+    print("    Study n8n core and community nodes")
+    print(f"  {color_text('study status', COLOR_CYAN)}")
+    print("    Show overall progress summary for both templates and nodes")
+    print(f"  {color_text('study done', COLOR_CYAN)}")
+    print("    Complete active item (template or node) automatically")
+    print(f"  {color_text('study undo', COLOR_CYAN)}")
+    print("    Rollback last completed item")
+    print("-" * 60)
+    print("Command Aliases:")
+    print("  * Modes: template, templates, t")
+    print("  * Modes: node, nodes, n")
+    print("  * Subcommands: done, complete")
+    print("  * Subcommands: undo")
+    print("  * Subcommands: status")
+    print("=" * 60)
+
+def main() -> None:
+    # Check for help command first
+    if len(sys.argv) < 2 or sys.argv[1].lower() in ("help", "--help", "-h"):
+        print_help()
+        sys.exit(0)
+
+    data, db_path = load_data()
+
+    # Mappings
+    mode_mapping = {
+        "template": "templates", "templates": "templates", "t": "templates",
+        "node": "nodes", "nodes": "nodes", "n": "nodes"
+    }
+    
     cmd_mapping = {
-        "done": "done", "complete": "done", "خلصت": "done",
-        "undo": "undo", "تراجع": "undo",
-        "status": "status", "الحالة": "status"
+        "done": "done", "complete": "done",
+        "undo": "undo",
+        "status": "status"
     }
 
-    parser = argparse.ArgumentParser(
-        description="n8n Study Progress Tracker",
-        add_help=True
-    )
-    parser.add_argument(
-        "command",
-        nargs="?",
-        choices=list(cmd_mapping.keys()),
-        help="Command to run: 'done' (complete study), 'undo' (rollback last), 'status' (view stats)."
-    )
+    first_arg = sys.argv[1].lower()
     
-    args = parser.parse_args()
-    
-    if args.command is None:
-        # Default behavior: show current active or fetch the next study template
+    mode = None
+    cmd = None
+
+    if first_arg in mode_mapping:
+        mode = mode_mapping[first_arg]
+        if len(sys.argv) >= 3:
+            second_arg = sys.argv[2].lower()
+            if second_arg in cmd_mapping:
+                cmd = cmd_mapping[second_arg]
+            else:
+                print(color_text(f"Unknown command: {sys.argv[2]}", COLOR_RED))
+                sys.exit(1)
+    elif first_arg in cmd_mapping:
+        cmd = cmd_mapping[first_arg]
+        # Auto-detect mode based on which has an active current_id
+        t_active = data["templates"]["current_id"] is not None
+        n_active = data["nodes"]["current_id"] is not None
+        if t_active and not n_active:
+            mode = "templates"
+        elif n_active and not t_active:
+            mode = "nodes"
+        elif cmd == "status":
+            # Show both status if no mode specified
+            show_mode_status("templates", data, db_path)
+            show_mode_status("nodes", data, db_path)
+            sys.exit(0)
+        else:
+            print(color_text("Multiple/No active items. Please specify: 'study template done' or 'study node done'.", COLOR_YELLOW))
+            sys.exit(1)
+    else:
+        print(color_text(f"Unknown mode or command: {sys.argv[1]}", COLOR_RED))
+        sys.exit(1)
+
+    m_data = data[mode]
+    ids = m_data["ids"]
+    completed_ids = m_data["completed_ids"]
+    current_id = m_data["current_id"]
+
+    if cmd is None:
+        # Default behavior: show current active or fetch the next study item
         if current_id is not None:
-            print_template(current_id, db_path)
+            if mode == "templates":
+                print_template(current_id, db_path)
+            else:
+                print_node(current_id, db_path)
         else:
             completed_set = set(completed_ids)
             next_id = None
@@ -206,54 +359,40 @@ def main() -> None:
                     next_id = tid
                     break
             if next_id is not None:
-                data["current_id"] = next_id
+                m_data["current_id"] = next_id
                 save_data(data)
-                print_template(next_id, db_path)
+                if mode == "templates":
+                    print_template(next_id, db_path)
+                else:
+                    print_node(next_id, db_path)
             else:
-                print(color_text("🎉 Excellent job! All templates have been completed!", COLOR_GREEN))
+                print(color_text(f"🎉 Excellent job! All {mode} have been completed!", COLOR_GREEN))
         sys.exit(0)
 
-    # Normalize command alias
-    cmd = cmd_mapping[args.command.lower()]
-    
     if cmd == "done":
         if current_id is not None:
             completed_ids.append(current_id)
-            data["current_id"] = None
+            m_data["current_id"] = None
             save_data(data)
-            print(color_text(f"✔️ Marked template {current_id} as completed.", COLOR_GREEN))
+            print(color_text(f"✔️ Marked {mode[:-1]} {current_id} as completed.", COLOR_GREEN))
         else:
-            print(color_text("⚠️ No active template under study. Type 'study' to fetch the next template.", COLOR_YELLOW))
+            print(color_text(f"⚠️ No active {mode[:-1]} under study. Type 'study {mode[:-1]}' to fetch the next.", COLOR_YELLOW))
             
     elif cmd == "undo":
         if completed_ids:
             last_id = completed_ids.pop()
-            data["current_id"] = last_id
+            m_data["current_id"] = last_id
             save_data(data)
-            print(color_text("↩️ Undone. Active template rolled back to:", COLOR_YELLOW))
-            print_template(last_id, db_path)
+            print(color_text(f"↩️ Undone. Active {mode[:-1]} rolled back to:", COLOR_YELLOW))
+            if mode == "templates":
+                print_template(last_id, db_path)
+            else:
+                print_node(last_id, db_path)
         else:
-            print(color_text("⚠️ No completed templates to undo.", COLOR_YELLOW))
+            print(color_text(f"⚠️ No completed {mode} to undo.", COLOR_YELLOW))
             
     elif cmd == "status":
-        total = len(ids)
-        done_count = len(completed_ids)
-        
-        print("\n" + color_text("📈 Study Progress Report", COLOR_BLUE))
-        print("=" * 40)
-        print(color_text(print_progress_bar(done_count, total), COLOR_GREEN))
-        print("=" * 40)
-        
-        if current_id is not None:
-            print_template(current_id, db_path)
-        else:
-            print(color_text("Active Template: None", COLOR_YELLOW))
-            
-        if completed_ids:
-            last_id = completed_ids[-1]
-            last_name, _ = get_template_info(last_id, db_path)
-            print(color_text(f"Last Completed: {last_id} - {last_name}", COLOR_YELLOW))
-        print()
+        show_mode_status(mode, data, db_path)
 
 if __name__ == "__main__":
     main()

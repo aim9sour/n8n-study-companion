@@ -20,8 +20,8 @@ This repository implements a **Human-in-the-loop Agentic Learning System** that 
 
 I built this system to solve my own learning bottlenecks, and the results were immediate and game-changing. By hooking a local Python CLI state tracker to an AI agent equipped with Model Context Protocol (MCP), I established a highly disciplined, interactive feedback loop:
 
-*   **Dynamic Local Sourcing:** The system feeds directly from your active local n8n SQLite templates database (`nodes.db`), ensuring you are always learning from real, up-to-date node structures.
-*   **Zero Planning Overhead:** The CLI manages the curriculum state. You never have to ask "what next?"—the system routes you and the AI mentor automatically.
+*   **Dual-Track Local Sourcing:** The system supports a dual-track curriculum (workflow templates and core/community nodes) queried directly from your local n8n SQLite database (`nodes.db`).
+*   **Zero Planning Overhead:** The CLI manages the curriculum state for both tracks. You never have to ask "what next?"—the system routes you and the AI mentor automatically.
 *   **Live Node Dissection (The MCP Advantage):** The AI companion doesn't just read code or talk theory. Via the MCP bridge, it interacts directly with your local n8n server—importing draft workflows, querying topologies, and guiding you through actual configurations node-by-node.
 *   **Atomic Progress Guard:** Progress is persisted safely in `study_progress.json` with write-safety guarantees, keeping your study logs intact.
 
@@ -85,20 +85,24 @@ python study.py
 ```
 *Tip: Set up a shell alias `study` pointing to `study.bat` so you can call it from any folder.*
 
-### 2. Bilingual CLI Command Cheat-Sheet
-The CLI supports bilingual command aliases for quick navigation:
+### 2. CLI Command Cheat-Sheet
+The CLI supports dual-track operations (templates and nodes) and auto-detects active items:
 
-| Command | Arabic Alias | Action |
-| :--- | :--- | :--- |
-| `python study.py` | `python study.py` | Prints the active template under study |
-| `python study.py done` | `python study.py خلصت` | Marks the active template completed and loads the next |
-| `python study.py undo` | `python study.py تراجع` | Reverts the last completed template to active study |
-| `python study.py status`| `python study.py الحالة` | Displays a visual progress bar and completion statistics |
+| Command | Action |
+| :--- | :--- |
+| `python study.py template` (or `t`) | Displays the active workflow template under study |
+| `python study.py node` (or `n`) | Displays the active node type under study |
+| `python study.py done` | Marks the active item (template or node) as completed and loads the next |
+| `python study.py undo` | Reverts the last completed item back to active study |
+| `python study.py status` | Displays a visual progress bar and completion statistics for both tracks |
+| `python study.py template status` | Shows progress statistics specifically for templates |
+| `python study.py node status` | Shows progress statistics specifically for nodes |
 
 ---
 
 ## ☕ The Prompts Philosophy
 The AI Agent is configured to act as an expert peer sitting next to you at a coffee shop:
+*   **Interactive Initialization:** At the start of each session, the AI asks the user whether they want to study Workflow Templates or Core/Community Nodes, dynamically adapting its analytical protocols to the selected track.
 *   **Strict Human-in-the-Loop:** The AI is blocked from auto-advancing or dumping massive amounts of information. It explains one point at a time and waits for your confirmation.
 *   **Zero Guesswork:** It treats node configurations as the sole source of truth. If a property is unclear, it searches the web instead of guessing.
 *   **Architecture Over Syntax:** It evaluates *why* design decisions were made, critiques inefficiencies (detecting anti-patterns), and reviews performance footprint.
