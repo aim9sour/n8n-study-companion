@@ -1,80 +1,104 @@
-# Agentic n8n Study Companion ☕🚀
+# n8n Study Companion: An Agentic Learning System ☕🚀
 
-A robust, interactive system designed to help developers master **n8n workflows and nodes** at an architectural level. This repository implements a **Human-in-the-loop Agentic Learning System** by bridging a local Python CLI state tracker, a specialized AI Agent, and n8n via the Model Context Protocol (MCP).
+> **Ditch passive reading. Master n8n workflow architecture through an automated CLI curriculum and a tool-enabled AI mentor.**
+
+---
+
+## 🎯 The Dilemma: Moving from "Docs" to "Architect"
+
+Reading the official n8n documentation is easy, but transitioning to production-grade freelance or enterprise development is where most developers stall. You face three critical bottlenecks:
+
+*   **Template Chaos & Redundancy:** The web is flooded with low-quality, duplicate, or outdated workflows. Finding high-value templates that follow modern best practices is a constant struggle.
+*   **Cognitive Progression Loss:** Without a structured state machine, it is nearly impossible to track which node patterns you have mastered and which ones you haven't. You end up in "tutorial hell," repeating the same concepts.
+*   **Decision Fatigue:** Spending 30 minutes deciding *what* to study next instead of actually *learning* drains the mental energy required for deep, focused analysis.
+
+---
+
+## 💡 The Breakthrough: Tool-Enabled Learning
+
+This repository implements a **Human-in-the-loop Agentic Learning System** that completely automates your educational trajectory. 
+
+I built this system to solve my own learning bottlenecks, and the results were immediate and game-changing. By hooking a local Python CLI state tracker to an AI agent equipped with Model Context Protocol (MCP), I established a highly disciplined, interactive feedback loop:
+
+*   **Dynamic Local Sourcing:** The system feeds directly from your active local n8n SQLite templates database (`nodes.db`), ensuring you are always learning from real, up-to-date node structures.
+*   **Zero Planning Overhead:** The CLI manages the curriculum state. You never have to ask "what next?"—the system routes you and the AI mentor automatically.
+*   **Live Node Dissection (The MCP Advantage):** The AI companion doesn't just read code or talk theory. Via the MCP bridge, it interacts directly with your local n8n server—importing draft workflows, querying topologies, and guiding you through actual configurations node-by-node.
+*   **Atomic Progress Guard:** Progress is persisted safely in `study_progress.json` with write-safety guarantees, keeping your study logs intact.
 
 ---
 
 ## 🏗️ System Architecture
 
-Instead of traditional passive learning, this project sets up an active, structured learning loop:
+The learning loop is designed around strict human authorization and structured data flow:
 
 ```mermaid
 graph TD
-    User([User / Learner]) -->|1. Run command| CLI[Python CLI State Tracker]
-    CLI -->|2. Reads/Writes| JSON[(study_progress.json)]
-    CLI -->|3. Resolves| DB[(nodes.db n8n SQLite)]
+    User([User / Learner]) -->|1. Run Command| CLI[Python CLI State Tracker]
+    CLI -->|2. State Cache| JSON[(study_progress.json)]
+    CLI -->|3. Resolves Path| DB[(nodes.db n8n SQLite)]
     User -->|4. Directs| AI[AI Agent Coffee Companion]
-    AI -->|5. Queries state| CLI
-    AI -->|6. Imports/Queries workflow| MCP[n8n MCP Server]
-    MCP -->|7. Fetches structure/details| n8n[n8n Instance]
-    AI -->|8. Explains segment-by-segment| User
+    AI -->|5. Queries Active ID| CLI
+    AI -->|6. Imports & Queries| MCP[n8n MCP Server]
+    MCP -->|7. Dissects Node Configs| n8n[Local n8n Instance]
+    AI -->|8. Explains Batch-by-Batch| User
 ```
 
-1. **State Manager (Python CLI):** Tracks study progress, caches the active template ID, resolves the location of n8n templates database (`nodes.db`), and supports bilingual commands.
-2. **AI Agent Prompt (The Coffee Companion):** A highly customized instruction set that governs the AI's explanation flow, ensuring it explains things node-by-node, waits for explicit user permission, searches the web for verification, and avoids hallucinations.
-3. **MCP Integration (`n8n-mcp`):** Allows the AI Agent to query the actual local/remote n8n instance to fetch structural topologies or specific node details dynamically.
+1.  **State Manager (Python CLI):** Resolves the n8n template cache path, handles progress transitions, and provides a lightweight CLI.
+2.  **AI Agent Prompt (The Coffee Companion):** A rigorous instruction set that forces the AI to explain workflows incrementally, batch nodes to protect context limits, detect anti-patterns, and wait for human confirmation before proceeding.
+3.  **n8n MCP Server:** The protocol bridge allowing the AI to query, control, and inspect n8n resources directly.
 
 ---
 
-## 🛠️ Features of the Python CLI (`study.py`)
+## 🛠️ Prerequisites & Community Stack
 
-The CLI script is built with professional coding standards in mind:
-* **Atomic JSON Writes:** Uses `tempfile` to write state safely, preventing data corruption.
-* **Dynamic DB Resolution:** Searches local directories (like AppData `npm-cache/_npx`) and fallback paths to locate the n8n-mcp SQLite database (`nodes.db`).
-* **Bilingual CLI Aliases:** Full native support for both Arabic and English commands (`خلصت` / `done`, `تراجع` / `undo`, `الحالة` / `status`).
-* **Robust Error Boundaries:** Automatic backup and reset of corrupted JSON files.
-* **Zero Dependencies:** Uses Python's standard library only (`sqlite3`, `json`, `argparse`, `pathlib`).
+To run the interactive loop, you need:
+1.  **Python 3.8+** (standard library only).
+2.  **Active n8n Instance** (running locally or accessible).
+3.  **The n8n MCP Server by czlonkowski (Required):** This project relies heavily on the excellent Model Context Protocol server developed by **czlonkowski**:
+    *   **Repository:** [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp)
+    *   This server gives the AI Agent the "hands" to query node configurations, verify JSON properties, and fetch workflow topologies directly from your environment.
+4.  **An MCP-Compatible AI Assistant:** An AI coding assistant or client that supports the Model Context Protocol (MCP) to load the server and execute commands. Supported options include:
+    *   **Antigravity:** Google DeepMind's agentic workspace environment.
+    *   **Codex:** An autonomous AI software engineering agent (available as a CLI, IDE extension, and desktop app).
+    *   **Claude Code:** Anthropic's official CLI-based terminal agent.
+    *   **Cursor:** AI-native code editor/IDE.
+    *   **Open Code:** An open-source terminal-based AI coding agent with configurable tool integrations.
 
 ---
 
 ## 📂 File Structure
 
-* **[study.py](file:///D:/الكود/برمجة/قوالب%20n8n/study.py)**: The Python CLI utility script.
-* **[agent_instructions_ar.md](file:///D:/الكود/برمجة/قوالب%20n8n/agent_instructions_ar.md)**: The original Arabic instructions prompt for the AI Agent.
-* **[agent_instructions_en.md](file:///D:/الكود/برمجة/قوالب%20n8n/agent_instructions_en.md)**: The English translation of the AI Agent prompt.
-* **[.gitignore](file:///D:/الكود/برمجة/قوالب%20n8n/.gitignore)**: Prevents local state and SQLite files from being committed.
+*   **`study.py`**: The CLI state tracking script.
+*   **`study.bat`**: Windows shortcut to run the CLI globally.
+*   **`agent_instructions_ar.md`**: The Arabic system prompt for the AI Agent (The Coffee Companion).
+*   **`agent_instructions_en.md`**: The English system prompt for the AI Agent.
+*   **`.gitignore`**: Excludes local database files and study states from version control.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Usage Guide
 
-### 1. Prerequisites
-Ensure you have:
-* Python 3.8+ installed.
-* An active n8n instance.
-* An AI coding assistant (like Gemini/Antigravity) equipped with the `n8n-mcp` server.
-
-### 2. Setting Up the CLI
-You can run the script directly:
+### 1. Initialize the CLI Tracker
+Start the tracker to verify your database connection and output your current active template:
 ```bash
 python study.py
 ```
+*Tip: Set up a shell alias `study` pointing to `study.bat` so you can call it from any folder.*
 
-To make it easier, you can use the provided batch script (`study.bat`) or create a shell alias so you can simply type `study` from anywhere.
+### 2. Bilingual CLI Command Cheat-Sheet
+The CLI supports bilingual command aliases for quick navigation:
 
-### 3. CLI Command Guide
-
-| English Command | Arabic Alias | Action |
+| Command | Arabic Alias | Action |
 | :--- | :--- | :--- |
-| `python study.py` | `python study.py` | Shows the active template or fetches the next template from the database |
-| `python study.py done` | `python study.py خلصت` | Marks the current active template as completed and moves to the next |
-| `python study.py undo` | `python study.py تراجع` | Rolls back the last completed template to active study state |
-| `python study.py status`| `python study.py الحالة` | Shows a beautiful text-based progress bar and completion statistics |
+| `python study.py` | `python study.py` | Prints the active template under study |
+| `python study.py done` | `python study.py خلصت` | Marks the active template completed and loads the next |
+| `python study.py undo` | `python study.py تراجع` | Reverts the last completed template to active study |
+| `python study.py status`| `python study.py الحالة` | Displays a visual progress bar and completion statistics |
 
 ---
 
-## ☕ Agent Prompting Philosophy
-The AI Agent is prompted to behave like a colleague sitting next to you at a coffee shop. It enforces:
-* **Human-in-the-Loop Control:** The AI never proceeds to explain another node or sub-topic without the user typing an explicit command to proceed.
-* **Strict Evidence-based Explanations:** The workflow nodes are treated as the sole source of truth to avoid hallucinations.
-* **Architectural Depth:** Explanations focus not just on *how* to configure a node, but *why* it is used, its performance impacts, best practices, and error handling.
+## ☕ The Prompts Philosophy
+The AI Agent is configured to act as an expert peer sitting next to you at a coffee shop:
+*   **Strict Human-in-the-Loop:** The AI is blocked from auto-advancing or dumping massive amounts of information. It explains one point at a time and waits for your confirmation.
+*   **Zero Guesswork:** It treats node configurations as the sole source of truth. If a property is unclear, it searches the web instead of guessing.
+*   **Architecture Over Syntax:** It evaluates *why* design decisions were made, critiques inefficiencies (detecting anti-patterns), and reviews performance footprint.
