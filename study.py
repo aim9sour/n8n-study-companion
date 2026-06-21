@@ -160,7 +160,7 @@ def load_data() -> Tuple[Dict[str, Any], Path]:
         try:
             conn = sqlite3.connect(db_path, timeout=10.0)
             c = conn.cursor()
-            c.execute("SELECT id FROM templates ORDER BY id ASC")
+            c.execute("SELECT id FROM templates WHERE author_verified = 1 ORDER BY id ASC")
             t_data["ids"] = [row[0] for row in c.fetchall()]
             t_data["db_mtime"] = current_mtime
             save_data(data)
@@ -179,7 +179,7 @@ def load_data() -> Tuple[Dict[str, Any], Path]:
         try:
             conn = sqlite3.connect(db_path, timeout=10.0)
             c = conn.cursor()
-            c.execute("SELECT node_type FROM nodes ORDER BY node_type ASC")
+            c.execute("SELECT node_type FROM nodes WHERE is_verified = 1 ORDER BY node_type ASC")
             n_data["ids"] = [row[0] for row in c.fetchall()]
             n_data["db_mtime"] = current_mtime
             save_data(data)
