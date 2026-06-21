@@ -1,0 +1,18 @@
+# Study progress and local database caches
+study_progress.json
+*.tmp
+*.corrupt.bak
+nodes.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.env
+
+# OS-specific files
+Thumbs.db
+Desktop.ini
+.DS_Store
